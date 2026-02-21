@@ -4,6 +4,7 @@ export type DeviceSummary = {
   lastSeen?: string | null;
   solarW: number | null;
   loadW: number | null;
+  gridW: number | null;
   batterySoc: number | null;
   tempC: number | null;
   status: string | null;

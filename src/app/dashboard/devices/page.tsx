@@ -1,13 +1,11 @@
 "use client";
 
+import Footer from "@/components/Footer";
 import { apiFetch } from "@/lib/api";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { HiOutlineHome } from "react-icons/hi";
 import { io, Socket } from "socket.io-client";
 
 type FleetDevice = {
@@ -40,7 +38,9 @@ type AlertPayload = {
 
 let socket: Socket | null = null;
 
-function isOnline(lastSeen: string | null) {
+type OnlineState = "ONLINE" | "STALE" | "OFFLINE" | "NO_DATA";
+
+function getOnlineState(lastSeen: string | null): OnlineState {
   if (!lastSeen) return "NO_DATA";
   const ageMs = Date.now() - new Date(lastSeen).getTime();
   if (ageMs <= 60_000) return "ONLINE";
@@ -48,19 +48,54 @@ function isOnline(lastSeen: string | null) {
   return "OFFLINE";
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function fmtW(w: number) {
+  if (!Number.isFinite(w)) return "—";
+  if (Math.abs(w) >= 1000) return `${(w / 1000).toFixed(1)}kW`;
+  return `${w}W`;
+}
+
+function relativeTime(iso: string | null) {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 export default function DevicesFleetPage() {
   const queryClient = useQueryClient();
   const [q, setQ] = useState("");
+  const [, tick] = useState(0);
+
+  // Update relative times without refetching data (prevents blinking)
+  useEffect(() => {
+    const id = setInterval(() => tick((x) => x + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
 
   const fleetQuery = useQuery({
     queryKey: ["fleet"],
     queryFn: () => apiFetch("/devices/fleet") as Promise<FleetDevice[]>,
-    staleTime: 10_000,
-    placeholderData: keepPreviousData,
-    refetchInterval: 15_000, // backup polling
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000, // backup every 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const fleet = fleetQuery.data ?? [];
+  const isColdLoading = fleetQuery.isPending && fleet.length === 0;
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -74,7 +109,6 @@ export default function DevicesFleetPage() {
     });
   }, [fleet, q]);
 
-  // key subscriptions by IDs (NOT length)
   const fleetIdsKey = useMemo(
     () =>
       fleet
@@ -84,7 +118,24 @@ export default function DevicesFleetPage() {
     [fleet],
   );
 
-  // Socket init only once
+  const summary = useMemo(() => {
+    const counts = { ONLINE: 0, STALE: 0, OFFLINE: 0, NO_DATA: 0 };
+    let unacked = 0;
+
+    for (const d of fleet) {
+      const s = getOnlineState(d.lastSeen);
+      counts[s] += 1;
+      unacked += d.unackedAlerts ?? 0;
+    }
+
+    return {
+      total: fleet.length,
+      ...counts,
+      unacked,
+    };
+  }, [fleet]);
+
+  // Socket init once
   useEffect(() => {
     if (socket) return;
 
@@ -100,17 +151,15 @@ export default function DevicesFleetPage() {
     );
   }, []);
 
-  // Subscribe/unsubscribe whenever device IDs set changes
+  // Subscribe per device
   useEffect(() => {
-    if (!socket) return;
-    if (!fleet.length) return;
+    if (!socket || !fleet.length) return;
 
     const cleanups: Array<() => void> = [];
 
     for (const d of fleet) {
       const telemetryEvent = `device:${d.id}`;
       const alertEvent = `device:${d.id}:alert`;
-      // Only keep this if your backend emits it
       const ackEvent = `device:${d.id}:alert:ack`;
 
       const telemetryHandler = (payload: any) => {
@@ -169,97 +218,209 @@ export default function DevicesFleetPage() {
       });
     }
 
-    return () => {
-      cleanups.forEach((fn) => fn());
-    };
-  }, [fleetIdsKey, queryClient]); // correct deps
+    return () => cleanups.forEach((fn) => fn());
+  }, [fleetIdsKey, queryClient, fleet.length]);
 
   return (
-    <div className="p-10 space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Devices</h1>
-          <p className="text-sm text-gray-500 mt-1">{fleet.length} total</p>
-        </div>
-
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by name, serial, location…"
-          className="w-[360] max-w-full rounded-xl border px-3 py-2 text-sm"
-        />
-      </div>
-
-      {fleetQuery.isError ? (
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="font-semibold text-red-600">Couldn’t load fleet</p>
-          <p className="text-sm text-gray-600 mt-1">
-            {(fleetQuery.error as any)?.message ?? "Unknown error"}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filtered.map((d) => {
-          const online = isOnline(d.lastSeen);
-
-          const onlineCls =
-            online === "ONLINE"
-              ? "bg-green-100 text-green-700 border-green-200"
-              : online === "STALE"
-                ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-                : online === "OFFLINE"
-                  ? "bg-red-100 text-red-700 border-red-200"
-                  : "bg-gray-100 text-gray-700 border-gray-200";
-
-          return (
-            <Link
-              key={d.id}
-              href={`/dashboard/devices/${d.id}`}
-              className="bg-white shadow rounded-2xl p-6 border hover:shadow-md transition"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-lg">{d.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {d.serial} {d.location ? `• ${d.location}` : ""}
-                  </p>
-                </div>
-
-                <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${onlineCls}`}
-                >
-                  {online}
+    <div className="flex flex-col min-h-screen px-10 space-y-6 bg-zinc-950 text-zinc-100">
+      {/* Static header */}
+      <div className="sticky top-0 z-10 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur">
+        <div className="px-6 py-6 space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-1 text-zinc-400">
+                <Link href="/" className="hover:text-white transition text-lg ">
+                  <HiOutlineHome className="w-5 h-5 text-zinc-400 hover:text-white transition" />
+                </Link>
+                <span className="text-2xl font-medium">/</span>
+                <span className="text-zinc-300 text-2xl font-semibold tracking-tight">
+                  Devices
                 </span>
               </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl border p-3">
-                  <p className="text-gray-500 text-xs">Battery</p>
-                  <p className="font-semibold">{d.soc ?? "—"}%</p>
-                </div>
-                <div className="rounded-xl border p-3">
-                  <p className="text-gray-500 text-xs">Temp</p>
-                  <p className="font-semibold">{d.tempC ?? "—"}°C</p>
-                </div>
-                <div className="rounded-xl border p-3">
-                  <p className="text-gray-500 text-xs">Solar</p>
-                  <p className="font-semibold">{d.solarW}W</p>
-                </div>
-                <div className="rounded-xl border p-3">
-                  <p className="text-gray-500 text-xs">Unacked</p>
-                  <p className="font-semibold">{d.unackedAlerts}</p>
-                </div>
-              </div>
-
-              <p className="text-xs text-gray-400 mt-4">
-                Last seen:{" "}
-                {d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "—"}
+              <p className="text-sm text-zinc-400 mt-1">
+                Fleet overview with live telemetry
               </p>
-            </Link>
-          );
-        })}
+            </div>
+
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search devices…"
+              className="w-[360] max-w-full rounded-2xl border border-zinc-700 bg-zinc-900/40 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-zinc-700 focus:ring-4 focus:ring-zinc-800/40"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <SummaryTile label="Total" value={summary.total} />
+            <SummaryTile label="Online" value={summary.ONLINE} />
+            <SummaryTile label="Stale" value={summary.STALE} />
+            <SummaryTile label="Offline" value={summary.OFFLINE} />
+            <SummaryTile label="Unacked" value={summary.unacked} />
+          </div>
+
+          {fleetQuery.isError && (
+            <div className="rounded-2xl border border-rose-900/50 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
+              Couldn’t load fleet —{" "}
+              {(fleetQuery.error as any)?.message ?? "Unknown error"}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Grid */}
+      <main className="flex-1">
+        <div className="px-6 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {isColdLoading
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm animate-pulse"
+                  >
+                    <div className="h-5 w-44 bg-zinc-800 rounded" />
+                    <div className="mt-2 h-3 w-64 bg-zinc-800 rounded" />
+                    <div className="mt-6 grid grid-cols-2 gap-3">
+                      <div className="h-16 bg-zinc-800 rounded-2xl" />
+                      <div className="h-16 bg-zinc-800 rounded-2xl" />
+                      <div className="h-16 bg-zinc-800 rounded-2xl" />
+                      <div className="h-16 bg-zinc-800 rounded-2xl" />
+                    </div>
+                    <div className="mt-4 h-3 w-52 bg-zinc-800 rounded" />
+                  </div>
+                ))
+              : filtered.map((d) => {
+                  const online = getOnlineState(d.lastSeen);
+
+                  const dotCls =
+                    online === "ONLINE"
+                      ? "bg-emerald-400"
+                      : online === "STALE"
+                        ? "bg-amber-400"
+                        : online === "OFFLINE"
+                          ? "bg-rose-400"
+                          : "bg-zinc-600";
+
+                  const soc = d.soc ?? null;
+                  const socPct = soc === null ? 0 : clamp(soc, 0, 100);
+
+                  const socTone =
+                    soc === null
+                      ? "bg-zinc-700"
+                      : socPct < 20
+                        ? "bg-rose-400"
+                        : socPct < 50
+                          ? "bg-amber-400"
+                          : "bg-emerald-400";
+
+                  return (
+                    <Link
+                      key={d.id}
+                      href={`/dashboard/devices/${d.id}`}
+                      className={[
+                        "group rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6 shadow-sm",
+                        "transition hover:bg-zinc-900/35 hover:border-zinc-700",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold">{d.name}</p>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {d.serial}
+                            {d.location ? ` • ${d.location}` : ""}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/40 px-3 py-1 text-xs text-zinc-300">
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${dotCls}`}
+                          />
+                          {online}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-zinc-500">Battery</p>
+                            <p className="text-xs text-zinc-500">SoC</p>
+                          </div>
+                          <p className="mt-1 text-base font-semibold">
+                            {soc === null ? "—" : `${soc}%`}
+                          </p>
+                          <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-800">
+                            <div
+                              className={`h-1.5 rounded-full ${socTone}`}
+                              style={{ width: `${socPct}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
+                          <p className="text-xs text-zinc-500">Temp</p>
+                          <p className="mt-1 text-base font-semibold">
+                            {d.tempC ?? "—"}°C
+                          </p>
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Status: {d.status ?? "—"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
+                          <p className="text-xs text-zinc-500">Solar</p>
+                          <p className="mt-1 text-base font-semibold">
+                            {fmtW(d.solarW)}
+                          </p>
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Load: {fmtW(d.loadW)}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
+                          <p className="text-xs text-zinc-500">Unacked</p>
+                          <p className="mt-1 text-base font-semibold">
+                            {d.unackedAlerts}
+                          </p>
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Grid: {fmtW(d.gridW)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="mt-4 text-xs text-zinc-500">
+                        Last seen:{" "}
+                        <span className="text-zinc-300">
+                          {relativeTime(d.lastSeen)}
+                        </span>
+                        {d.lastSeen ? (
+                          <span className="text-zinc-700"> • </span>
+                        ) : null}
+                        {d.lastSeen
+                          ? new Date(d.lastSeen).toLocaleString()
+                          : ""}
+                      </p>
+                    </Link>
+                  );
+                })}
+          </div>
+
+          {!fleetQuery.isPending && filtered.length === 0 && (
+            <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/20 p-6 text-sm text-zinc-400">
+              No devices found.
+            </div>
+          )}
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/20 px-4 py-3 shadow-sm">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="text-lg font-semibold leading-6 text-zinc-100">{value}</p>
     </div>
   );
 }
