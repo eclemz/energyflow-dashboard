@@ -222,12 +222,12 @@ export default function DevicesFleetPage() {
   }, [fleetIdsKey, queryClient, fleet.length]);
 
   return (
-    <div className="flex flex-col min-h-screen px-10 space-y-6 bg-zinc-950 text-zinc-100">
+    <div className="flex flex-col min-h-screen px-4 md:px-10 space-y-6 bg-zinc-950 text-zinc-100">
       {/* Static header */}
-      <div className="sticky top-0 z-10 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur">
+      <div className="md:sticky top-0 z-10 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur">
         <div className="px-6 py-6 space-y-4">
-          <div className="flex items-end justify-between gap-4">
-            <div>
+          <div className="flex  md:flex-row flex-col items-start md:items-end justify-between gap-4">
+            <div className="">
               <div className="flex items-center gap-1 text-zinc-400">
                 <Link href="/" className="hover:text-white transition text-lg ">
                   <HiOutlineHome className="w-5 h-5 text-zinc-400 hover:text-white transition" />

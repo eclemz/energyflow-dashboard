@@ -98,7 +98,7 @@ export default function DashboardPage() {
   if (loading) return <div className="p-6">Loading dashboard...</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {overview && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <StatCard title="Devices" value={overview.totalDevices} />

@@ -242,13 +242,42 @@ export default function DevicePage() {
     await Promise.all([summaryQuery.refetch(), readingsQuery.refetch()]);
   }
 
-  const isDev = process.env.NODE_ENV !== "production";
-  const isDemo =
-    typeof document !== "undefined" && document.cookie.includes("ef_demo=1");
-  const canSimulate = isDev || isDemo;
+  const [canSimulate, setCanSimulate] = useState(false);
+
+  useEffect(() => {
+    const isDev = process.env.NODE_ENV !== "production";
+    const isDemo = document.cookie.includes("ef_demo=1");
+
+    setCanSimulate(isDev || isDemo);
+  }, []);
 
   const [isSimulating, setIsSimulating] = useState(false);
+  async function startSimulation() {
+    if (!id) return;
+    await apiFetch(`/devices/${id}/sim/start`, {
+      method: "POST",
+      body: JSON.stringify({
+        tickMs: 2000,
+        solarPeakW: 1400,
+        baseLoadW: 420,
+        faultChancePerTick: 0.01,
+      }),
+    });
+  }
 
+  async function stopSimulation() {
+    if (!id) return;
+    await apiFetch(`/devices/${id}/sim/stop`, {
+      method: "POST",
+    });
+  }
+
+  async function runOneTick() {
+    if (!id) return;
+    await apiFetch(`/devices/${id}/sim/once`, {
+      method: "POST",
+    });
+  }
   async function simulateTelemetry() {
     if (!id) return;
     try {
@@ -279,96 +308,141 @@ export default function DevicePage() {
           : "bg-emerald-400";
 
   return (
-    <div className="min-h-screen px-10 bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen px-4 md:px-10  bg-zinc-950 text-zinc-100">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 border-b border-zinc-800/40 bg-zinc-950/80 backdrop-blur">
-        <div className="px-6 py-6 space-y-4">
-          <div className="flex items-end justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => router.push("/dashboard/devices")}
-                  className="flex flex-row text-base items-center text-zinc-400 hover:text-zinc-100 transition cursor-pointer"
-                >
-                  <RiArrowLeftSLine className="w-5 h-5" />
-                  Fleet
-                </button>
-                <span className="text-zinc-400">/</span>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Device Overview
-                </h1>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <StreamBadge state={stream.state} />
-                <DeviceOnlineBadge lastSeen={summary?.lastSeen} />
-                <span className="text-xs text-zinc-500">
-                  Last seen:{" "}
-                  <span className="text-zinc-200">
-                    {relativeTime(summary?.lastSeen)}
-                  </span>
-                </span>
-              </div>
-
-              <div className="text-xs text-zinc-500">
-                {lastReadingISO ? (
-                  <>
-                    Last reading:{" "}
-                    <span className="text-zinc-200">
-                      {relativeTime(lastReadingISO)}
-                    </span>
-                  </>
-                ) : (
-                  "No readings received yet"
-                )}
-                {lastUpdatedAt ? (
-                  <>
-                    <span className="text-zinc-700 px-2"> • </span>
-                    Updated: {new Date(lastUpdatedAt).toLocaleString()}
-                  </>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-900/20 p-1 gap-1">
-                {(["6h", "24h", "7d", "30d"] as const).map((r) => (
+      {/* Unified sticky header (mobile + desktop) */}
+      {/* Header container (NOT sticky) */}
+      <div className="border-b border-zinc-800/40 bg-zinc-950">
+        {/* ✅ Sticky top row ends after Refresh */}
+        <div className="fixed md:px-10 top-0 right-0 left-0 z-40 bg-zinc-950/80 backdrop-blur border-b border-zinc-800/40">
+          <div className="px-4 md:px-6 py-4 md:py-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 md:gap-4">
+              {/* Left: back + title + badges */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
                   <button
-                    key={r}
-                    onClick={() => setRangeUI(r)}
-                    className={[
-                      "px-3 py-2 rounded-xl text-sm transition",
-                      rangeUI === r
-                        ? "bg-zinc-100 text-zinc-950"
-                        : "text-zinc-300 hover:bg-zinc-900/40",
-                    ].join(" ")}
+                    onClick={() => router.push("/dashboard/devices")}
+                    className="inline-flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-100 transition cursor-pointer"
                   >
-                    {r}
+                    <RiArrowLeftSLine className="w-5 h-5" />
+                    Fleet
                   </button>
-                ))}
+
+                  <span className="text-zinc-600">/</span>
+
+                  <h1 className="text-lg md:text-2xl font-semibold tracking-tight">
+                    Device Overview
+                  </h1>
+                </div>
+
+                <div className="flex flex-wrap md:flex-col items-center gap-2">
+                  <div className="self-start gap-2 flex ">
+                    <StreamBadge state={stream.state} />
+                    <DeviceOnlineBadge lastSeen={summary?.lastSeen} />
+                  </div>
+                  {/* {lastUpdatedAt && (
+                    <span className="text-xs text-zinc-500">
+                      Last Updated:{" "}
+                      <span className="text-zinc-200">
+                        {relativeTime(
+                          summaryQuery.dataUpdatedAt
+                            ? new Date(summaryQuery.dataUpdatedAt).toISOString()
+                            : null,
+                        )}
+                      </span>
+                    </span>
+                  )} */}
+                  <div>
+                    <span className="text-xs text-zinc-500">
+                      Last seen:{" "}
+                      <span className="text-zinc-200">
+                        {relativeTime(summary?.lastSeen)}
+                      </span>
+                    </span>
+
+                    {lastReadingISO ? (
+                      <span className="text-xs text-zinc-500">
+                        <span className="text-zinc-700 px-2">•</span>
+                        Last reading:{" "}
+                        <span className="text-zinc-200">
+                          {relativeTime(lastReadingISO)}
+                        </span>
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
-              <button
-                onClick={refetchAll}
-                disabled={isSoftLoading}
-                className="group flex rounded-xl border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm font-medium items-center gap-2 disabled:opacity-60 active:scale-95 transition"
-              >
-                <IoMdRefresh
-                  className={[
-                    "h-5 w-5 transition-transform duration-500",
-                    isSoftLoading ? "animate-spin" : "group-active:rotate-180",
-                  ].join(" ")}
-                />
-                Refresh
-              </button>
+              {/* Right: range + refresh */}
+              <div className="flex items-center justify-between md:justify-end gap-3">
+                <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-900/20 p-1 gap-1">
+                  {(["6h", "24h", "7d", "30d"] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRangeUI(r)}
+                      className={[
+                        "px-3 py-2 rounded-xl text-sm transition cursor-pointer",
+                        rangeUI === r
+                          ? "bg-zinc-100 text-zinc-950"
+                          : "text-zinc-300 hover:bg-zinc-900/40",
+                      ].join(" ")}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={refetchAll}
+                  disabled={isSoftLoading}
+                  className="group inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm cursor-pointer font-medium text-zinc-200 hover:bg-zinc-900/40 disabled:opacity-60 active:scale-95 transition"
+                >
+                  <IoMdRefresh
+                    className={[
+                      "h-5 w-5 transition-transform duration-500",
+                      isSoftLoading
+                        ? "animate-spin"
+                        : "group-active:rotate-180",
+                    ].join(" ")}
+                  />
+                  Refresh
+                </button>
+                {canSimulate && (
+                  <>
+                    <button
+                      onClick={startSimulation}
+                      className="rounded-2xl border cursor-pointer border-emerald-800 bg-emerald-900/20 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-900/40 transition active:scale-95"
+                    >
+                      Start Sim
+                    </button>
+
+                    <button
+                      onClick={stopSimulation}
+                      className="rounded-2xl border cursor-pointer border-rose-800 bg-rose-900/20 px-3 py-2 text-sm text-rose-300 hover:bg-rose-900/40 transition active:scale-95"
+                    >
+                      Stop
+                    </button>
+
+                    <button
+                      onClick={runOneTick}
+                      className="rounded-2xl border cursor-pointer border-zinc-800 bg-zinc-900/30 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900/50 transition active:scale-95"
+                    >
+                      One Tick
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Summary strip */}
+        {/* ✅ NOT sticky: summary strip scrolls away */}
+        <div className="md:px-6 py-4 md:mt-40 mt-48">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <Metric label="Solar" value={fmtW(summary?.solarW)} />
             <Metric label="Load" value={fmtW(summary?.loadW)} />
             <Metric label="Grid" value={fmtW(summary?.gridW)} />
+            {/* Battery tile */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/20 px-4 py-3">
               <p className="text-xs text-zinc-500">Battery</p>
               <p className="text-lg font-semibold">
@@ -390,22 +464,10 @@ export default function DevicePage() {
               value={String(summary?.unackedAlerts ?? 0)}
             />
           </div>
-
-          {showReconnecting ? (
-            <div className="rounded-2xl border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-              Reconnecting… backend is temporarily unavailable.
-            </div>
-          ) : null}
-
-          {showFatalError ? (
-            <div className="rounded-2xl border border-rose-900/50 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
-              Couldn’t load device data — {error.message}
-            </div>
-          ) : null}
         </div>
       </div>
 
-      <div className="px-6 py-8 space-y-8">
+      <div className="md:px-6 py-8 space-y-8">
         {/* Alerts */}
         <div className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6">
           <div className="flex items-center justify-between">
@@ -467,7 +529,7 @@ export default function DevicePage() {
                         console.error(e);
                       }
                     }}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900/30 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50 transition active:scale-95"
+                    className="rounded-2xl border cursor-pointer border-zinc-800 bg-zinc-900/30 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900/50 transition active:scale-95"
                   >
                     Acknowledge
                   </button>

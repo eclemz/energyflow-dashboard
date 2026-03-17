@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="px-10 min-h-screen bg-zinc-950 text-white flex flex-col">
+    <div className="p-4 md:px-10 min-h-screen bg-zinc-950 text-white flex flex-col">
       {/* NAV */}
       <header className="w-full border-b border-zinc-800">
         <div className=" px-6 py-5 flex items-center justify-between">

@@ -2,6 +2,7 @@ export type RangeKey = "6h" | "24h" | "7d" | "30d";
 
 export type DeviceSummary = {
   lastSeen?: string | null;
+  lastUpdatedAt?: string | number | null;
   solarW: number | null;
   loadW: number | null;
   gridW: number | null;
