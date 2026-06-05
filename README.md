@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+EnergyFlow ⚡
 
-## Getting Started
+Real-time Energy Intelligence for Modern Infrastructure
 
-First, run the development server:
+EnergyFlow is a real-time telemetry and energy intelligence platform that helps organizations monitor, analyze, and optimize distributed energy systems from a single unified dashboard.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+It transforms raw device data into clear operational insight—so teams can detect issues faster, reduce downtime, and make smarter energy decisions at scale.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+⸻
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The Problem
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Energy infrastructure is becoming increasingly distributed, but visibility hasn’t kept up.
 
-## Learn More
+Most systems today suffer from:
 
-To learn more about Next.js, take a look at the following resources:
+* Fragmented monitoring tools
+* Delayed or missing telemetry insights
+* Poor fleet-level visibility
+* Reactive maintenance instead of predictive intelligence
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This creates inefficiency, downtime, and operational blind spots.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+⸻
 
-## Deploy on Vercel
+The Solution
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+EnergyFlow introduces a unified intelligence layer for energy systems.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+It provides:
+
+* Real-time device and fleet monitoring
+* Structured telemetry ingestion and visualization
+* Scalable architecture for large device networks
+* Clean, actionable dashboards for operators and engineers
+
+It is built to shift energy operations from reactive to proactive.
+
+
+
+Key Features
+
+* Live telemetry streaming and visualization
+* Fleet + single-device analytics views
+* Modular, API-first backend architecture
+* Extensible integrations layer
+* High-performance dashboard UI designed for clarity and speed
+
+⸻
+
+Tech Stack
+
+Next.js • Node.js • Prisma ORM • PostgreSQL (Neon) • Vercel
+
+⸻
+
+Architecture Philosophy
+
+EnergyFlow is built with scalability and clarity in mind:
+
+* API-first design for extensibility
+* Separation of telemetry ingestion and visualization
+* Cloud-native deployment strategy
+* Minimal UI complexity, maximum signal clarity
+
+⸻
+
+Vision
+
+To become the operating system for energy intelligence—powering how modern infrastructure is monitored, optimized, and maintained in real time.
+
+⸻
+
+Why It Matters
+
+EnergyFlow is not just a dashboard.
+It is a shift from disconnected monitoring tools to a unified intelligence layer for energy systems.
+
+Built for engineers. Designed for scale. Ready for real-world infrastructure.
